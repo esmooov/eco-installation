@@ -3,6 +3,63 @@ import * as THREE from 'three';
 import './App.css';
 import styled from "styled-components";
 
+const SCALE = 1;
+const RATIO = 2.16454997239;
+const TIME_SCALE = 0.5
+
+const fragmentShader = `
+  #include <common>
+
+  uniform vec3 iResolution;
+  uniform float iTime;
+  uniform float iCull;
+
+  // By iq: https://www.shadertoy.com/user/iq  
+  // license: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
+  // Created by Andrew Wild - akohdr/2016
+  // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
+
+  #define R iResolution
+  #define T (iTime/3.+5.)
+  #define C iCull
+
+  void mainImage( out vec4 k, vec2 p )
+  {
+    #define rot(p,a) vec2 sc=sin(vec2(a,a+1.6)); p*=mat2(sc.y,-sc.x,sc);
+
+      #define A vec3(0,1,157)
+      #define B {vec2 m=fract(p),l=dot(p-m,A.yz)+A.xz,r=mix(fract(57.*sin(l++)),fract(57.*sin(l)),(m*=m*(3.-m-m)).x);k+=mix(r.x,r.y,m.y)/(s+=s);p*=mat2(1,1,1,-1);}
+
+      float amplitude = 1.;
+      float frequency = .001;
+      float y = sin(T * frequency);
+      float t = 0.01*(T*130.0);
+      y += sin(T*frequency*2.1 + t)*4.5;
+      y += sin(T*frequency*1.72 + t*1.121)*4.0;
+      y += sin(T*frequency*2.221 + t*0.437)*5.0;
+      y += sin(T*frequency*3.1122+ t*4.269)*2.5;
+      y *= amplitude*0.06;
+
+
+      p *= log(0.1)/R.y;        // scaling (slow zoom out)
+      p.x += y * .05;           // translation
+      p.y += sin(T*.05);
+      rot(p,T/22.);         // slow field rotation
+
+      float s = 1.; k = vec4(0);    // init
+      B B B B B // unrolled perlin noise see https://www.shadertoy.com/view/lt3GWn
+
+      vec4 ex = sin(2.*sin(k*22.+T*2.)+p.yxyy-p.yyxy*.5)/6.;
+      k += ex + C;    // colour transform
+      k += vec4(0,0,0,0.1);
+      k.w = 1.;
+  }
+
+  void main() {
+    mainImage(gl_FragColor, gl_FragCoord.xy);
+  }
+`;
+
 const Bars = styled.div`
   display: flex;
   height: 50vh;
@@ -14,16 +71,44 @@ const Bar = styled.div`
   height: 100%;
   flex-grow: 1;
 `
-const Scrim = styled.div`
-  position: fixed;
-  left: 0;
-  top: 0;
-  width:100vw;
-  height: 100vw;
-  background-color: white;
-  z-index:10;
-  mix-blend-mode: multiply;
+
+const HiddenIMG = styled.img`
+  display: none;
 `
+
+const HiddenCanvas = styled.canvas`
+  display: none;
+`
+
+const Canvas = styled.canvas`
+  position: absolute;
+  top:0;
+  left:0;
+`
+
+const Wrapper = styled.div`
+  position: relative;
+  height: 100vh;
+  width: 100vw;
+`
+
+const OilCanvas = styled.canvas`
+  position:absolute;
+  top:0;
+  left:0;
+  mix-blend-mode: color-burn;
+`
+const BG = styled.div`
+  width:  ${SCALE * 100}vw;
+  height: calc(${SCALE * 100}vw / ${RATIO});
+  background-image: url('${(props: BGProps) => props.image}');
+  background-size: cover;
+  position: absolute;
+  top:0;
+  left:0;
+  display: ${(props: BGProps) => props.show ? "block" : "none"};
+`
+
 const audioCtx = new AudioContext();
 const analyserSand = audioCtx.createAnalyser();
 analyserSand.fftSize = 32
@@ -58,9 +143,6 @@ const dataArrayWater = new Uint8Array(bufferLength);
 // }
 
 
-const SCALE = 1;
-const RATIO = 2.16454997239;
-const TIME_SCALE = 0.5
 let POS = 0
 let WAIT: string | null = null
 let currentOldBlocks: number[], currentBlocks: number[], currentDimensions: Dimensions, ctx: CanvasRenderingContext2D, play: React.MutableRefObject<boolean>;
@@ -82,17 +164,6 @@ type Dimensions = {
   frame: Frame,
   blockSize: number,
 }
-
-const BG = styled.div`
-  width:  ${SCALE * 100}vw;
-  height: calc(${SCALE * 100}vw / ${RATIO});
-  background-image: url('${(props: BGProps) => props.image}');
-  background-size: cover;
-  position: absolute;
-  top:0;
-  left:0;
-  display: ${(props: BGProps) => props.show ? "block" : "none"};
-`
 
 type Step = {
   src: string,
@@ -308,26 +379,6 @@ const getFrame = (i: number): Frame => {
   return Script[SCRIPT_RAW[i].src]
 }
 
-const HiddenIMG = styled.img`
-  display: none;
-`
-
-const HiddenCanvas = styled.canvas`
-  display: none;
-`
-
-const Canvas = styled.canvas`
-  position: absolute;
-  top:0;
-  left:0
-`
-
-const Wrapper = styled.div`
-  position: relative;
-  height: 100vh;
-  width: 100vw;
-`
-
 const FPS = 60;
 const FRAME_TIME = 1000 / FPS
 let lastTime: number | null = null
@@ -358,6 +409,57 @@ SCRIPT_RAW.forEach((step: Step) => {
   }
 })
 let setScriptPosition = (position: number) => {/* no-op */ }
+let OilRenderer: THREE.WebGLRenderer | undefined, OilUniforms: {
+  iTime: {
+    value: number;
+  };
+  iResolution: {
+    value: THREE.Vector3;
+  };
+  iCull: {
+    value: number;
+  }
+} | undefined, OilScene: THREE.Scene | null, OilCamera: THREE.OrthographicCamera | null;
+const setUpOilCanvas = (canvas: Element) => {
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: false });
+  renderer.autoClearColor = false;
+
+  OilCamera = new THREE.OrthographicCamera(
+    -1, // left
+    1, // right
+    1, // top
+    -1, // bottom
+    -1, // near,
+    1, // far
+  );
+  OilScene = new THREE.Scene();
+  const plane = new THREE.PlaneGeometry(2, 2);
+  const uniforms = {
+    iTime: { value: 0 },
+    iResolution: { value: new THREE.Vector3() },
+    iCull: { value: 0.1 },
+  };
+  const material = new THREE.ShaderMaterial({
+    fragmentShader,
+    uniforms,
+    side: THREE.DoubleSide,
+  });
+  OilScene.add(new THREE.Mesh(plane, material));
+  OilRenderer = renderer
+  OilUniforms = uniforms
+}
+const resizeRendererToDisplaySize = () => {
+  if (!OilRenderer) return
+  const canvas = OilRenderer.domElement;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const needResize = canvas.width !== width || canvas.height !== height;
+  if (needResize) {
+    OilRenderer.setSize(width, height, false);
+  }
+  return needResize;
+}
+
 const createWorkerMessage = (dimensions: Dimensions, frame: Frame) => {
   return {
     width: dimensions.width,
@@ -386,7 +488,6 @@ const advanceScript = (stall = false) => {
     diamondWorker.postMessage(createWorkerMessage(nextRawDimensions, nextFrame))
   }
   if (BLOCK_HOPPER[frame.src] && BLOCK_HOPPER[frame.src].length > 0) {
-    console.log(BLOCK_HOPPER[frame.src])
     const currentBuffer = BLOCK_HOPPER[frame.src].pop()
     currentBlocks = Array.from(currentBuffer)
     BLOCK_HOPPER[frame.src].unshift(Array.from(currentBuffer))
@@ -398,6 +499,7 @@ const advanceScript = (stall = false) => {
 
 
 const CanvasRef = React.createRef<HTMLCanvasElement>()
+const OilCanvasRef = React.createRef<HTMLCanvasElement>()
 const getDimensions = (frame: Frame): Dimensions | undefined => {
   const image = frame.canvasRef.current
   const seconds = frame.seconds * TIME_SCALE
@@ -421,8 +523,8 @@ const step = (timestamp: number) => {
   analyserSand.getByteFrequencyData(dataArraySand);
   analyserWater.getByteFrequencyData(dataArrayWater);
   const avgAmp = (dataArraySand[0] + dataArrayWater[0]) / (2 * 255)
-  const ampBlocksPerFrame = Math.ceil(avgAmp * blocksPerFrame)
-  //const ampBlocksPerFrame = blocksPerFrame * Math.random()
+  //const ampBlocksPerFrame = Math.ceil(avgAmp * blocksPerFrame)
+  const ampBlocksPerFrame = blocksPerFrame;
   //console.log(avgAmp)
   if (currentBlocks && currentBlocks.length > 0 && !WAIT) {
     const numBlocks = Math.min(ampBlocksPerFrame, Math.ceil(ampBlocksPerFrame * delta / FRAME_TIME)) * 2
@@ -439,10 +541,16 @@ const step = (timestamp: number) => {
       ctx.drawImage(image, sx, sy, 1, 1, dx, dy, blockSize, blockSize)
     }
   }
-  const scrim = document.getElementById("scrim")
-  if (scrim) {
-    scrim.style.backgroundColor = `rgba(${255 - dataArraySand[0]},255,${255 - dataArrayWater[0]},1)`
+
+  if (OilRenderer && OilUniforms && OilScene && OilCamera) {
+    const WEBGL_T = delta * 0.001;
+    const canvas = OilRenderer.domElement;
+    OilUniforms.iResolution.value.set(canvas.width, canvas.height, 1);
+    OilUniforms.iTime.value += WEBGL_T;
+    //OilUniforms.iCull.value = 0.1 + (timestamp % 1000 / 1000)
+    OilRenderer.render(OilScene, OilCamera);
   }
+
   window.requestAnimationFrame((t) => {
     if (currentBlocks?.length < 1 && !WAIT) {
       advanceScript()
@@ -469,7 +577,16 @@ const App = () => {
   }, [])
 
   React.useEffect(() => {
-    window.addEventListener("click", () => {
+    if (!OilCanvasRef.current) return
+    OilCanvasRef.current.width = window.innerWidth * SCALE;
+    OilCanvasRef.current.height = window.innerWidth / RATIO;
+
+    setUpOilCanvas(OilCanvasRef.current)
+    resizeRendererToDisplaySize()
+  }, [])
+
+  React.useEffect(() => {
+    const onClick = () => {
       if (play.current === false) {
         audioCtx.resume()
         play.current = true
@@ -488,7 +605,9 @@ const App = () => {
             sourceWater.connect(analyserWater)
           })
       }
-    })
+    }
+    window.addEventListener("click", onClick)
+    return window.removeEventListener("click", onClick)
   }, [])
 
   const hiddenImages = Object.values(Script).map(({ src, canvasRef }, i) => {
@@ -503,7 +622,7 @@ const App = () => {
       {bgs}
       {hiddenImages}
       <Canvas width="100%" height="100%" ref={CanvasRef} />
-      <Scrim id="scrim" />
+      <OilCanvas width="100%" height="100%" ref={OilCanvasRef} />
     </Wrapper>
   );
 }
