@@ -11,8 +11,9 @@ const fragmentShader = `
   #include <common>
 
   uniform vec3 iResolution;
-  uniform float iTime;
+  uniform highp float iTime;
   uniform float iCull;
+  uniform float iMix;
 
   // By iq: https://www.shadertoy.com/user/iq  
   // license: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
@@ -22,6 +23,7 @@ const fragmentShader = `
   #define R iResolution
   #define T (iTime/3.+5.)
   #define C iCull
+  #define M iMix
 
   void mainImage( out vec4 k, vec2 p )
   {
@@ -50,9 +52,11 @@ const fragmentShader = `
       B B B B B // unrolled perlin noise see https://www.shadertoy.com/view/lt3GWn
 
       vec4 ex = sin(2.*sin(k*22.+T*2.)+p.yxyy-p.yyxy*.5)/6.;
-      k += ex + C;    // colour transform
-      k += vec4(0,0,0,0.1);
-      k.w = 1.;
+      vec4 one = k + ex + C;    // colour transform
+      one.w = 1.;
+      vec4 two = sin(length(p)/2.*sin(k*22.+T*4.)+p.yxyy-p.yyxy*.5);
+      k = mix(one,two,M);
+      k = max(vec4(0.01,0.01,0.01,0.01),k);
   }
 
   void main() {
@@ -109,14 +113,16 @@ const BG = styled.div`
   display: ${(props: BGProps) => props.show ? "block" : "none"};
 `
 
+const mics = ["Sand", "Water", "Glass"];
 const audioCtx = new AudioContext();
-const analyserSand = audioCtx.createAnalyser();
-analyserSand.fftSize = 32
-const analyserWater = audioCtx.createAnalyser();
-analyserWater.fftSize = 32
-const bufferLength = analyserSand.frequencyBinCount;;
-const dataArraySand = new Uint8Array(bufferLength);
-const dataArrayWater = new Uint8Array(bufferLength);
+const analysers: any = {}
+mics.forEach(mic => {
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 32
+  const bufferLength = analyser.frequencyBinCount;;
+  const dataArray = new Uint8Array(bufferLength);
+  analysers[mic] = { analyser, bufferLength, dataArray }
+})
 // const draw = () => {
 //   requestAnimationFrame(draw);
 //   analyserSand.getByteFrequencyData(dataArraySand);
@@ -176,27 +182,11 @@ type Step = {
 
 const SCRIPT_RAW: Array<Step> = [
   {
-    src: "title.png",
-    cx: 0.5,
-    cy: 0.2,
-    type: "fade",
-    seconds: 8,
-    hold: 0,
-  },
-  {
     src: "frame-1.jpg",
     cx: 0.8,
     cy: 0.5,
     type: "fade",
-    seconds: 8,
-    hold: 3,
-  },
-  {
-    src: "title-1.jpg",
-    cx: 0,
-    cy: 0,
-    type: "fade",
-    seconds: 1,
+    seconds: 15,
     hold: 3,
   },
   {
@@ -204,31 +194,15 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.5,
     cy: 0.2,
     type: "fade",
-    seconds: 8,
+    seconds: 15,
     hold: 0,
-  },
-  {
-    src: "title-2.jpg",
-    cx: 0.5,
-    cy: 0.2,
-    type: "fade",
-    seconds: 3,
-    hold: 3,
   },
   {
     src: "frame-3.jpg",
     cx: 0.5,
     cy: 0.5,
     type: "fade",
-    seconds: 8,
-    hold: 0,
-  },
-  {
-    src: "title-3.jpg",
-    cx: 0.5,
-    cy: 0.5,
-    type: "fade",
-    seconds: 3,
+    seconds: 15,
     hold: 0,
   },
   {
@@ -236,7 +210,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.7,
     cy: 0.5,
     type: "fade",
-    seconds: 3,
+    seconds: 15,
     hold: 3,
   },
   {
@@ -244,7 +218,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0,
     cy: 0.5,
     type: "fade",
-    seconds: 3,
+    seconds: 15,
     hold: 0,
   },
   {
@@ -252,7 +226,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0,
     cy: 0.5,
     type: "fade",
-    seconds: 8,
+    seconds: 15,
     hold: 5,
   },
   {
@@ -260,7 +234,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.5,
     cy: 0.4,
     type: "fade",
-    seconds: 8,
+    seconds: 15,
     hold: 0,
   },
   {
@@ -268,7 +242,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.5,
     cy: 0.4,
     type: "fade",
-    seconds: 5,
+    seconds: 8,
     hold: 3,
   },
   {
@@ -276,7 +250,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.5,
     cy: 0.4,
     type: "fade",
-    seconds: 5,
+    seconds: 8,
     hold: 3,
   },
   {
@@ -284,7 +258,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.5,
     cy: 0.5,
     type: "fade",
-    seconds: 8,
+    seconds: 15,
     hold: 0,
   },
   {
@@ -308,7 +282,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.5,
     cy: 0.5,
     type: "fade",
-    seconds: 8,
+    seconds: 15,
     hold: 0,
   },
   {
@@ -332,7 +306,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.55,
     cy: 0.5,
     type: "fade",
-    seconds: 10,
+    seconds: 15,
     hold: 0,
   },
   {
@@ -340,7 +314,7 @@ const SCRIPT_RAW: Array<Step> = [
     cx: 0.55,
     cy: 0.5,
     type: "fade",
-    seconds: 3,
+    seconds: 6,
     hold: 0,
   },
   {
@@ -418,6 +392,9 @@ let OilRenderer: THREE.WebGLRenderer | undefined, OilUniforms: {
   };
   iCull: {
     value: number;
+  };
+  iMix: {
+    value: number;
   }
 } | undefined, OilScene: THREE.Scene | null, OilCamera: THREE.OrthographicCamera | null;
 const setUpOilCanvas = (canvas: Element) => {
@@ -437,7 +414,8 @@ const setUpOilCanvas = (canvas: Element) => {
   const uniforms = {
     iTime: { value: 0 },
     iResolution: { value: new THREE.Vector3() },
-    iCull: { value: 0.1 },
+    iCull: { value: 0.2 },
+    iMix: { value: 0 }
   };
   const material = new THREE.ShaderMaterial({
     fragmentShader,
@@ -473,12 +451,12 @@ const createWorkerMessage = (dimensions: Dimensions, frame: Frame) => {
 }
 const advanceScript = (stall = false) => {
   if (!stall) {
-    POS = POS + 1
+    POS = (POS + 1) % SCRIPT_RAW.length
     setScriptPosition(POS)
   }
-  const frame = getFrame(POS + 1)
+  const frame = getFrame((POS + 1) % SCRIPT_RAW.length)
   const rawDimensions = getDimensions(frame)
-  const nextFrame = getFrame(POS + 2)
+  const nextFrame = getFrame((POS + 2) % SCRIPT_RAW.length)
   const nextRawDimensions = getDimensions(nextFrame)
   if (rawDimensions) {
     currentDimensions = rawDimensions
@@ -490,7 +468,7 @@ const advanceScript = (stall = false) => {
   if (BLOCK_HOPPER[frame.src] && BLOCK_HOPPER[frame.src].length > 0) {
     const currentBuffer = BLOCK_HOPPER[frame.src].pop()
     currentBlocks = Array.from(currentBuffer)
-    BLOCK_HOPPER[frame.src].unshift(Array.from(currentBuffer))
+    //BLOCK_HOPPER[frame.src].unshift(Array.from(currentBuffer))
   } else {
     WAIT = frame.src
   }
@@ -520,11 +498,13 @@ const step = (timestamp: number) => {
   const { image, imageBlockFactor, blocksPerFrame, blockSize } = currentDimensions
   const delta = lastTime ? timestamp - lastTime : FRAME_TIME
   lastTime = timestamp
-  analyserSand.getByteFrequencyData(dataArraySand);
-  analyserWater.getByteFrequencyData(dataArrayWater);
-  const avgAmp = (dataArraySand[0] + dataArrayWater[0]) / (2 * 255)
+  const analyserData = Object.entries(analysers).reduce((m: any, [k, v]: any): any => {
+    m[k] = v.analyser.getByteFrequencyData(v.dataArray)
+    return m
+  }, {})
+  //const avgAmp = (dataArraySand[0] + dataArrayWater[0]) / (2 * 255)
   //const ampBlocksPerFrame = Math.ceil(avgAmp * blocksPerFrame)
-  const ampBlocksPerFrame = blocksPerFrame;
+  const ampBlocksPerFrame = Math.ceil(blocksPerFrame * 0.5);
   //console.log(avgAmp)
   if (currentBlocks && currentBlocks.length > 0 && !WAIT) {
     const numBlocks = Math.min(ampBlocksPerFrame, Math.ceil(ampBlocksPerFrame * delta / FRAME_TIME)) * 2
@@ -548,6 +528,7 @@ const step = (timestamp: number) => {
     OilUniforms.iResolution.value.set(canvas.width, canvas.height, 1);
     OilUniforms.iTime.value += WEBGL_T;
     //OilUniforms.iCull.value = 0.1 + (timestamp % 1000 / 1000)
+    //OilUniforms.iMix.value = soemthing from sound
     OilRenderer.render(OilScene, OilCamera);
   }
 
@@ -592,17 +573,14 @@ const App = () => {
         play.current = true
         navigator.mediaDevices.enumerateDevices()
           .then(async (devices) => {
-            const audioInterfaceSand = devices.find(device => device.kind === "audioinput" && device.label.match("Sand"))
-            if (!audioInterfaceSand) return
-            const streamSand = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioInterfaceSand.deviceId } })
-            const sourceSand = audioCtx.createMediaStreamSource(streamSand);
-            sourceSand.connect(analyserSand)
+            Object.entries(analysers).forEach(async ([k, v]: any) => {
+              const audioInterface = devices.find(device => device.kind === "audioinput" && device.label.match(k))
+              if (!audioInterface) return
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioInterface.deviceId } })
+              const source = audioCtx.createMediaStreamSource(stream);
+              source.connect(v.analyser)
+            })
 
-            const audioInterfaceWater = devices.find(device => device.kind === "audioinput" && device.label.match("Water"))
-            if (!audioInterfaceWater) return
-            const streamWater = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: audioInterfaceWater.deviceId } })
-            const sourceWater = audioCtx.createMediaStreamSource(streamWater);
-            sourceWater.connect(analyserWater)
           })
       }
     }
